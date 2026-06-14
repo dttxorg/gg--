@@ -47,5 +47,6 @@ export async function middleware(req: any) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
+  // 排除 /api/seed（不用登录的临时初始化路由）
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|api/seed|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
 };
