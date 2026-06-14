@@ -8,9 +8,10 @@ export async function middleware(req: any) {
   const { nextUrl } = req;
   const isLoginPage = nextUrl.pathname === '/login';
   const isApiAuth = nextUrl.pathname.startsWith('/api/auth');
+  const isApiSeed = nextUrl.pathname === '/api/seed';  // 临时 seed 路由（不用登录）
   const isAdminApi = nextUrl.pathname.startsWith('/api/admin');
   const isAdminPage = nextUrl.pathname.startsWith('/admin');
-  const isPublic = isLoginPage || isApiAuth;
+  const isPublic = isLoginPage || isApiAuth || isApiSeed;
 
   // 拿 JWT token（不解析密码 hash，只看 token 本身）
   const token = await getToken({
