@@ -4,13 +4,14 @@ import PostEditor from './PostEditor';
 
 export const dynamic = 'force-dynamic';
 
-export default async function EditPostPage({ params }: { params: { id: string } }) {
-  const isNew = params.id === 'new';
+export default async function EditPostPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const isNew = id === 'new';
   const platforms = await prisma.platform.findMany({ orderBy: { order: 'asc' } });
   let post: any = null;
   if (!isNew) {
     post = await prisma.post.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: { images: { orderBy: { order: 'asc' } } },
     });
     if (!post) return <div className="p-10 text-center text-muted">文案不存在</div>;

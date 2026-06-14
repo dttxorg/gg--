@@ -19,9 +19,10 @@ const PatchSchema = z.object({
   expireAt: z.string().nullable().optional(),
 });
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const s = await requireAdmin();
   if (!s) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  const { id } = await params;
 
   const body = await req.json();
   const parsed = PatchSchema.safeParse(body);
@@ -35,16 +36,17 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (d.expireAt !== undefined) data.expireAt = d.expireAt ? new Date(d.expireAt) : null;
   if (d.password) data.passwordHash = await bcrypt.hash(d.password, 10);
 
-  const u = await prisma.user.update({ where: { id: params.id }, data });
+  const u = await prisma.user.update({ where: { id }, data });
   return NextResponse.json({ id: u.id });
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const s = await requireAdmin();
   if (!s) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
-  if (params.id === s.user.id) {
+  const { id } = await params;
+  if (id === s.user.id) {
     return NextResponse.json({ error: '不能删除自己' }, { status: 400 });
   }
-  await prisma.user.delete({ where: { id: params.id } });
+  await prisma.user.delete({ where: { id } });
   return NextResponse.json({ ok: true });
 }

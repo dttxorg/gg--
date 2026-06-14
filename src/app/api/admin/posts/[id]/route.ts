@@ -20,9 +20,10 @@ async function requireAdmin() {
   return session;
 }
 
-export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireAdmin();
   if (!session) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  const { id } = await params;
 
   const body = await req.json();
   const parsed = PostSchema.safeParse(body);
@@ -30,7 +31,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   const d = parsed.data;
 
   const post = await prisma.post.update({
-    where: { id: params.id },
+    where: { id },
     data: {
       platformId: d.platformId,
       title: d.title,
@@ -45,13 +46,14 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   return NextResponse.json({ id: post.id });
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireAdmin();
   if (!session) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  const { id } = await params;
 
   // 软删除：标记 isDeleted，不真删（保留回收站能力）
   await prisma.post.update({
-    where: { id: params.id },
+    where: { id },
     data: { isDeleted: true },
   });
   return NextResponse.json({ ok: true });

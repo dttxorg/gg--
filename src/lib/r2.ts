@@ -3,24 +3,33 @@
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { randomUUID } from 'node:crypto';
 
-const required = ['R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET', 'R2_PUBLIC_HOST'];
-for (const k of required) {
-  if (!process.env[k]) {
-    console.warn(`[r2] missing env ${k} — image upload will fail until set`);
-  }
-}
+let _r2: S3Client | null = null;
+let _warned = false;
 
-export const r2 = new S3Client({
-  region: 'auto',
-  endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-  credentials: {
-    accessKeyId: process.env.R2_ACCESS_KEY_ID || '',
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || '',
-  },
-});
+function getR2(): S3Client {
+  if (_r2) return _r2;
+  if (!_warned) {
+    for (const k of ['R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET', 'R2_PUBLIC_HOST']) {
+      if (!process.env[k]) {
+        console.warn(`[r2] missing env ${k} — image upload will fail until set`);
+      }
+    }
+    _warned = true;
+  }
+  _r2 = new S3Client({
+    region: 'auto',
+    endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId: process.env.R2_ACCESS_KEY_ID || '',
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || '',
+    },
+  });
+  return _r2;
+}
 
 export const R2_BUCKET = process.env.R2_BUCKET || '';
 export const R2_PUBLIC_HOST = process.env.R2_PUBLIC_HOST || '';
+export const r2 = new Proxy({} as S3Client, { get: (_t, prop) => (getR2() as any)[prop] });
 
 export interface UploadResult {
   url: string;

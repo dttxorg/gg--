@@ -4,9 +4,10 @@ import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
 
-export default async function AdminPostsPage({ searchParams }: { searchParams: { platform?: string } }) {
+export default async function AdminPostsPage({ searchParams }: { searchParams: Promise<{ platform?: string }> }) {
+  const { platform } = await searchParams;
   const platforms = await prisma.platform.findMany({ orderBy: { order: 'asc' } });
-  const activeSlug = searchParams.platform || '';
+  const activeSlug = platform || '';
 
   const where: any = { isDeleted: false };
   if (activeSlug) where.platform = { slug: activeSlug };

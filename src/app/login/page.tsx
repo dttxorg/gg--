@@ -1,10 +1,10 @@
 // 登录页
 'use client';
-import { useState, useTransition } from 'react';
+import { Suspense, useState, useTransition } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const from = params.get('from') || '';
@@ -24,12 +24,50 @@ export default function LoginPage() {
         setErr('用户名或密码错误');
         return;
       }
-      // 跳回原页面或根
       router.push(from || '/');
       router.refresh();
     });
   }
 
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div>
+        <label className="block text-xs font-bold text-muted mb-1.5">用户名</label>
+        <input
+          type="text"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          autoComplete="username"
+          required
+          className="w-full px-4 py-2.5 border border-line rounded-sm bg-paper-2 focus:border-primary focus:bg-white outline-none transition"
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-bold text-muted mb-1.5">密码</label>
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          autoComplete="current-password"
+          required
+          className="w-full px-4 py-2.5 border border-line rounded-sm bg-paper-2 focus:border-primary focus:bg-white outline-none transition"
+        />
+      </div>
+
+      {err && <p className="text-sm text-accent bg-soft border border-accent/20 px-3 py-2 rounded-sm">{err}</p>}
+
+      <button
+        type="submit"
+        disabled={pending}
+        className="w-full py-3 bg-gradient-to-br from-primary to-primary-deep text-white font-bold rounded-sm hover:shadow-warm transition disabled:opacity-60"
+      >
+        {pending ? '登录中…' : '登录'}
+      </button>
+    </form>
+  );
+}
+
+export default function LoginPage() {
   return (
     <main className="min-h-screen flex items-center justify-center p-4">
       <div className="w-full max-w-sm bg-white rounded-[22px] shadow-lg border border-line p-8">
@@ -43,40 +81,9 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-xs font-bold text-muted mb-1.5">用户名</label>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              autoComplete="username"
-              required
-              className="w-full px-4 py-2.5 border border-line rounded-sm bg-paper-2 focus:border-primary focus:bg-white outline-none transition"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-muted mb-1.5">密码</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              required
-              className="w-full px-4 py-2.5 border border-line rounded-sm bg-paper-2 focus:border-primary focus:bg-white outline-none transition"
-            />
-          </div>
-
-          {err && <p className="text-sm text-accent bg-soft border border-accent/20 px-3 py-2 rounded-sm">{err}</p>}
-
-          <button
-            type="submit"
-            disabled={pending}
-            className="w-full py-3 bg-gradient-to-br from-primary to-primary-deep text-white font-bold rounded-sm hover:shadow-warm transition disabled:opacity-60"
-          >
-            {pending ? '登录中…' : '登录'}
-          </button>
-        </form>
+        <Suspense fallback={<div className="py-8 text-center text-muted text-sm">加载中…</div>}>
+          <LoginForm />
+        </Suspense>
 
         <p className="text-xs text-muted mt-6 text-center">
           没有账号？联系你的上级代理开通。

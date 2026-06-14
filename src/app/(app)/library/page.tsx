@@ -4,7 +4,8 @@ import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
 
-export default async function LibraryPage({ searchParams }: { searchParams: { platform?: string } }) {
+export default async function LibraryPage({ searchParams }: { searchParams: Promise<{ platform?: string }> }) {
+  const { platform: sp } = await searchParams;
   const platforms = await prisma.platform.findMany({
     orderBy: { order: 'asc' },
     include: {
@@ -12,7 +13,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: { pl
     },
   });
 
-  const activeSlug = searchParams.platform || platforms[0]?.slug || '';
+  const activeSlug = sp || platforms[0]?.slug || '';
   const activePlatform = platforms.find((p) => p.slug === activeSlug) || platforms[0];
 
   const posts = activePlatform

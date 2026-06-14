@@ -1,18 +1,26 @@
-// src/middleware.ts — 路由保护
-import { auth } from './lib/auth';
+// src/middleware.ts — 路由保护（精简版）
+// 关键：不在 Edge Runtime 跑 bcryptjs，只用 JWT 解码判断登录态
+// 实际的"账号密码验证"交给 Auth.js 在 Node Runtime 里做
 import { NextResponse } from 'next/server';
+import { getToken } from 'next-auth/jwt';
 
-export default auth((req) => {
+export async function middleware(req: any) {
   const { nextUrl } = req;
-  const isLoggedIn = !!req.auth;
-  const user = req.auth?.user;
-
   const isLoginPage = nextUrl.pathname === '/login';
   const isApiAuth = nextUrl.pathname.startsWith('/api/auth');
   const isAdminApi = nextUrl.pathname.startsWith('/api/admin');
   const isAdminPage = nextUrl.pathname.startsWith('/admin');
-  const isLibrary = nextUrl.pathname.startsWith('/library');
   const isPublic = isLoginPage || isApiAuth;
+
+  // 拿 JWT token（不解析密码 hash，只看 token 本身）
+  const token = await getToken({
+    req,
+    secret: process.env.AUTH_SECRET,
+    salt: 'authjs.session-token',
+  });
+
+  const isLoggedIn = !!token;
+  const user = token as any;
 
   if (isPublic) {
     if (isLoginPage && isLoggedIn) {
@@ -35,7 +43,7 @@ export default auth((req) => {
   }
 
   return NextResponse.next();
-});
+}
 
 export const config = {
   matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],

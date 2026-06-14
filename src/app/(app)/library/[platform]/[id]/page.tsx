@@ -8,13 +8,14 @@ export const dynamic = 'force-dynamic';
 export default async function PostDetailPage({
   params,
 }: {
-  params: { platform: string; id: string };
+  params: Promise<{ platform: string; id: string }>;
 }) {
-  const platform = await prisma.platform.findUnique({ where: { slug: params.platform } });
+  const { platform: platformSlug, id: postId } = await params;
+  const platform = await prisma.platform.findUnique({ where: { slug: platformSlug } });
   if (!platform) notFound();
 
   const post = await prisma.post.findFirst({
-    where: { id: params.id, platformId: platform.id, isDeleted: false },
+    where: { id: postId, platformId: platform.id, isDeleted: false },
     include: { images: { orderBy: { order: 'asc' } } },
   });
   if (!post) notFound();
