@@ -12,12 +12,14 @@ export async function middleware(req: any) {
   const isAdminApi = nextUrl.pathname.startsWith('/api/admin');
   const isAdminPage = nextUrl.pathname.startsWith('/admin');
   const isPublic = isLoginPage || isApiAuth || isApiSeed;
+  const secureCookie =
+    nextUrl.protocol === 'https:' || req.headers.get('x-forwarded-proto') === 'https';
 
   // 拿 JWT token（不解析密码 hash，只看 token 本身）
   const token = await getToken({
     req,
     secret: process.env.AUTH_SECRET,
-    salt: 'authjs.session-token',
+    secureCookie,
   });
 
   const isLoggedIn = !!token;
