@@ -26,7 +26,7 @@ export default async function AdminPostsPage({ searchParams }: { searchParams: P
           <h1 className="text-2xl font-black mt-1 mb-1">文案管理</h1>
         </div>
         <Link
-          href="/admin/posts/new"
+          href="/admin/posts/new/edit"
           className="px-5 py-2.5 bg-primary text-white font-bold rounded-full shadow-sm hover:bg-primary-dark transition"
         >
           + 新建

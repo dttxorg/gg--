@@ -46,7 +46,7 @@ export default async function AdminHome() {
           <Link href="/admin/posts" className="text-sm text-primary hover:underline">查看全部 →</Link>
         </div>
         {recentPosts.length === 0 ? (
-          <p className="text-sm text-muted m-0">还没有文案 · <Link href="/admin/posts/new" className="text-primary hover:underline">立即新建</Link></p>
+          <p className="text-sm text-muted m-0">还没有文案 · <Link href="/admin/posts/new/edit" className="text-primary hover:underline">立即新建</Link></p>
         ) : (
           <ul className="space-y-2">
             {recentPosts.map((p) => (
@@ -67,7 +67,7 @@ export default async function AdminHome() {
       </div>
 
       <Link
-        href="/admin/posts/new"
+        href="/admin/posts/new/edit"
         className="block text-center py-3 bg-gradient-to-br from-primary to-primary-deep text-white font-bold rounded-[18px] shadow-warm hover:shadow-lg transition"
       >
         + 新建文案
