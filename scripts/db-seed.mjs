@@ -24,9 +24,9 @@ async function main() {
   }
   console.log(`✅ ${PLATFORMS.length} 个平台已就位`);
 
-  // 2) 管理员账号（从环境变量读，初次默认 admin / Admin@2026）
+  // 2) 管理员账号（从环境变量读，初次默认 admin / Admin@2026!）
   const adminUsername = process.env.ADMIN_USERNAME || 'admin';
-  const adminPassword = process.env.ADMIN_PASSWORD || 'Admin@2026';
+  const adminPassword = process.env.ADMIN_PASSWORD || 'Admin@2026!';
   const existing = await prisma.user.findUnique({ where: { username: adminUsername } });
   if (!existing) {
     const passwordHash = await bcrypt.hash(adminPassword, 10);

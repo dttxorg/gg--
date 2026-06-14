@@ -87,7 +87,7 @@ gh repo create giffgaff-agent-hub --private --source=. --push
 ```
 AUTH_SECRET          = <openssl rand -base64 32>
 AUTH_TRUST_HOST      = true
-POSTGRES_URL         = <从 Vercel Postgres 自动注入>
+DATABASE_URL         = <Vercel Postgres 的 POSTGRES_PRISMA_URL 或 Neon connection string>
 R2_ACCOUNT_ID        = <你的 Cloudflare 账户 ID>
 R2_ACCESS_KEY_ID     = <R2 API Token 的 Access Key>
 R2_SECRET_ACCESS_KEY = <R2 API Token 的 Secret>
@@ -99,13 +99,38 @@ R2_PUBLIC_HOST       = https://pub-你的id.r2.dev
 
 ### 5. 初始化数据库 + 管理员
 
-Vercel 控制台 → 项目 → Settings → Functions → 找到 "Console"（或用本地跑命令）：
+临时方式：部署后访问一次：
+
+```text
+https://你的域名.vercel.app/api/seed
+```
+
+应该看到 JSON，包含：
+
+```json
+{
+  "ok": true,
+  "credentials": {
+    "username": "admin",
+    "password": "Admin@2026!"
+  }
+}
+```
+
+然后访问 `/login`，用上面的账号登录。确认能登录后，删除 `src/app/api/seed/route.ts` 并重新部署，避免默认账号信息长期暴露。
+
+如果访问 `/api/seed` 看到的是 Vercel 的 `Authentication Required`，那不是应用代码跳转，而是 Vercel Deployment Protection 拦截。处理方式二选一：
+
+- 在 Vercel 项目 Settings → Deployment Protection 里允许访问当前部署/生产部署。
+- 或者使用 Vercel 的 bypass token / `vercel curl` 访问该 URL。
+
+更稳妥的方式：本地拉取生产环境变量后跑命令：
 
 ```bash
 # 拉环境变量本地跑 seed
 vercel env pull .env.local
 npx prisma db push   # 创建表
-ADMIN_USERNAME=admin ADMIN_PASSWORD=你的强密码 node scripts/db-seed.mjs
+ADMIN_USERNAME=admin ADMIN_PASSWORD='你的强密码' node scripts/db-seed.mjs
 ```
 
 或者直接登录 Vercel Postgres 控制台手动 INSERT 一个 admin 账号（bcrypt hash 用上面 seed 脚本生成）。
@@ -125,13 +150,13 @@ ADMIN_USERNAME=admin ADMIN_PASSWORD=你的强密码 node scripts/db-seed.mjs
 # 1. 复制环境变量
 cp .env.example .env
 
-# 2. 填入真实的 POSTGRES_URL 和 R2 凭证（或临时用本地 Postgres + 跳过图片上传）
+# 2. 填入真实的 DATABASE_URL 和 R2 凭证（或临时用本地 Postgres + 跳过图片上传）
 
 # 3. 推送 schema
 npm run db:push
 
 # 4. 创建管理员
-ADMIN_USERNAME=admin ADMIN_PASSWORD=Admin@2026 npm run db:seed
+ADMIN_USERNAME=admin ADMIN_PASSWORD='Admin@2026!' npm run db:seed
 
 # 5. 启动
 npm run dev
