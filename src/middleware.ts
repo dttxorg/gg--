@@ -8,12 +8,21 @@ export async function middleware(req: any) {
   const { nextUrl } = req;
   const isLoginPage = nextUrl.pathname === '/login';
   const isApiAuth = nextUrl.pathname.startsWith('/api/auth');
-  const isApiSeed = nextUrl.pathname === '/api/seed';  // 临时 seed 路由（不用登录）
+  const isApiSeed = nextUrl.pathname === '/api/seed';
   const isAdminApi = nextUrl.pathname.startsWith('/api/admin');
   const isAdminPage = nextUrl.pathname.startsWith('/admin');
-  const isPublic = isLoginPage || isApiAuth || isApiSeed;
+  const isPublic = isLoginPage || isApiAuth;
   const secureCookie =
     nextUrl.protocol === 'https:' || req.headers.get('x-forwarded-proto') === 'https';
+
+  if (isApiSeed) {
+    const seedToken = process.env.SEED_TOKEN;
+    const requestToken = req.headers.get('x-seed-token') || nextUrl.searchParams.get('token');
+    if (!seedToken || requestToken !== seedToken) {
+      return NextResponse.json({ error: 'not_found' }, { status: 404 });
+    }
+    return NextResponse.next();
+  }
 
   // 拿 JWT token（不解析密码 hash，只看 token 本身）
   const token = await getToken({
@@ -49,6 +58,5 @@ export async function middleware(req: any) {
 }
 
 export const config = {
-  // 排除 /api/seed（不用登录的临时初始化路由）
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|api/seed|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
 };

@@ -88,6 +88,7 @@ gh repo create giffgaff-agent-hub --private --source=. --push
 AUTH_SECRET          = <openssl rand -base64 32>
 AUTH_TRUST_HOST      = true
 DATABASE_URL         = <Vercel Postgres 的 POSTGRES_PRISMA_URL 或 Neon connection string>
+SEED_TOKEN           = <随机长密钥，用于受保护的 /api/seed 初始化>
 R2_ACCOUNT_ID        = <你的 Cloudflare 账户 ID>
 R2_ACCESS_KEY_ID     = <R2 API Token 的 Access Key>
 R2_SECRET_ACCESS_KEY = <R2 API Token 的 Secret>
@@ -99,10 +100,10 @@ R2_PUBLIC_HOST       = https://pub-你的id.r2.dev
 
 ### 5. 初始化数据库 + 管理员
 
-临时方式：部署后访问一次：
+临时方式：先在 Vercel 环境变量里配置 `SEED_TOKEN`，部署后带 token 访问一次：
 
 ```text
-https://你的域名.vercel.app/api/seed
+https://你的域名.vercel.app/api/seed?token=<SEED_TOKEN>
 ```
 
 应该看到 JSON，包含：
@@ -117,7 +118,7 @@ https://你的域名.vercel.app/api/seed
 }
 ```
 
-然后访问 `/login`，用上面的账号登录。确认能登录后，删除 `src/app/api/seed/route.ts` 并重新部署，避免默认账号信息长期暴露。
+然后访问 `/login`，用上面的账号登录。生产环境如果不需要远程初始化，可以删除 Vercel 的 `SEED_TOKEN`，此时 `/api/seed` 会返回 404。
 
 如果访问 `/api/seed` 看到的是 Vercel 的 `Authentication Required`，那不是应用代码跳转，而是 Vercel Deployment Protection 拦截。处理方式二选一：
 

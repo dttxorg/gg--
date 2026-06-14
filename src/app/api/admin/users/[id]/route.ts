@@ -29,6 +29,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!parsed.success) return NextResponse.json({ error: 'invalid' }, { status: 400 });
   const d = parsed.data;
 
+  if (id === s.user.id && (d.role === 'AGENT' || d.isActive === false)) {
+    return NextResponse.json({ error: '不能把自己降级或停用' }, { status: 400 });
+  }
+
   const data: any = {};
   if (d.displayName !== undefined) data.displayName = d.displayName;
   if (d.role) data.role = d.role;

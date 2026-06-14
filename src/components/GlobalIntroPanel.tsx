@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { sanitizeContentHtml } from '@/lib/sanitize';
 
 interface GlobalIntroPanelProps {
   intro: {
@@ -14,6 +15,7 @@ interface GlobalIntroPanelProps {
 export default function GlobalIntroPanel({ intro, admin = false }: GlobalIntroPanelProps) {
   if (!intro) return null;
   if (!admin && !intro.isPublished) return null;
+  const contentHtml = sanitizeContentHtml(intro.contentHtml);
 
   return (
     <details className="group bg-white border border-line rounded-[18px] mb-5 shadow-sm overflow-hidden">
@@ -48,7 +50,7 @@ export default function GlobalIntroPanel({ intro, admin = false }: GlobalIntroPa
       <div className="px-4 sm:px-5 pb-5 border-t border-dashed border-line">
         <div
           className="post-content pt-4"
-          dangerouslySetInnerHTML={{ __html: intro.contentHtml }}
+          dangerouslySetInnerHTML={{ __html: contentHtml }}
         />
         {admin && (
           <Link

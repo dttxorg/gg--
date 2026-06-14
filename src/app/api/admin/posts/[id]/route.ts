@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { attachImagesToPost } from '@/lib/post-images';
+import { sanitizeContentHtml } from '@/lib/sanitize';
 import { z } from 'zod';
 
 const PostSchema = z.object({
@@ -9,10 +11,11 @@ const PostSchema = z.object({
   subtitle: z.string().max(500).optional().default(''),
   tags: z.string().max(200).optional().default(''),
   contentHtml: z.string().min(1),
-  contentText: z.string().min(1),
+  contentText: z.string().optional().default(''),
   pinned: z.boolean().optional().default(false),
   order: z.number().int().optional().default(0),
   imageIds: z.array(z.string()).max(80).optional().default([]),
+  draftKey: z.string().optional().nullable(),
 });
 
 async function requireAdmin() {
@@ -30,29 +33,39 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const parsed = PostSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: 'invalid' }, { status: 400 });
   const d = parsed.data;
+  const contentHtml = sanitizeContentHtml(d.contentHtml) || '<p></p>';
 
-  const post = await prisma.post.update({
-    where: { id },
-    data: {
-      platformId: d.platformId,
-      title: d.title,
-      subtitle: d.subtitle || null,
-      tags: d.tags || null,
-      contentHtml: d.contentHtml,
-      contentText: d.contentText,
-      pinned: d.pinned,
-      order: d.order,
-    },
-  });
+  try {
+    const post = await prisma.$transaction(async (tx) => {
+      const updated = await tx.post.update({
+        where: { id },
+        data: {
+          platformId: d.platformId,
+          title: d.title,
+          subtitle: d.subtitle || null,
+          tags: d.tags || null,
+          contentHtml,
+          contentText: d.contentText,
+          pinned: d.pinned,
+          order: d.order,
+        },
+      });
 
-  for (const [order, imageId] of d.imageIds.entries()) {
-    await prisma.postImage.update({
-      where: { id: imageId },
-      data: { postId: post.id, order },
-    }).catch(() => {});
+      await attachImagesToPost(tx, {
+        imageIds: d.imageIds,
+        postId: updated.id,
+        userId: session.user.id,
+        draftKey: d.draftKey,
+      });
+
+      return updated;
+    });
+
+    return NextResponse.json({ id: post.id });
+  } catch (e) {
+    console.error('update post failed', e);
+    return NextResponse.json({ error: '保存失败，请检查图片是否属于当前文案' }, { status: 400 });
   }
-
-  return NextResponse.json({ id: post.id });
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

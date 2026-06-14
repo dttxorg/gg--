@@ -3,6 +3,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { sanitizeContentHtml } from '@/lib/sanitize';
 
 const GuideSchema = z.object({
   title: z.string().min(1).max(120),
@@ -36,12 +37,13 @@ export async function PUT(req: NextRequest) {
   }
 
   const d = parsed.data;
+  const contentHtml = sanitizeContentHtml(d.contentHtml) || '<p></p>';
   const guide = await prisma.globalIntro.upsert({
     where: { key: 'main' },
     update: {
       title: d.title,
       summary: d.summary || null,
-      contentHtml: d.contentHtml,
+      contentHtml,
       contentText: d.contentText,
       isPublished: d.isPublished,
     },
@@ -49,7 +51,7 @@ export async function PUT(req: NextRequest) {
       key: 'main',
       title: d.title,
       summary: d.summary || null,
-      contentHtml: d.contentHtml,
+      contentHtml,
       contentText: d.contentText,
       isPublished: d.isPublished,
     },

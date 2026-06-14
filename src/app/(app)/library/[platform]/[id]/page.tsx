@@ -1,5 +1,6 @@
 // 文案详情：渲染富文本 + 复制全文 + 复制图片
 import { prisma } from '@/lib/prisma';
+import { sanitizeContentHtml } from '@/lib/sanitize';
 import { notFound } from 'next/navigation';
 import CopyButtons from './CopyButtons';
 
@@ -19,6 +20,7 @@ export default async function PostDetailPage({
     include: { images: { orderBy: { order: 'asc' } } },
   });
   if (!post) notFound();
+  const contentHtml = sanitizeContentHtml(post.contentHtml);
 
   return (
     <div>
@@ -50,7 +52,7 @@ export default async function PostDetailPage({
 
         <div
           className="post-content"
-          dangerouslySetInnerHTML={{ __html: post.contentHtml }}
+          dangerouslySetInnerHTML={{ __html: contentHtml }}
         />
 
         {post.images.length > 0 && (
@@ -58,7 +60,7 @@ export default async function PostDetailPage({
             <p className="text-sm font-bold text-ink-2 mb-3">📎 配图（点击复制到剪贴板）</p>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {post.images.map((img) => (
-                <CopyImage key={img.id} url={img.url} alt={img.alt || post.title} />
+                <CopyImage key={img.id} id={img.id} url={img.url} alt={img.alt || post.title} />
               ))}
             </div>
           </div>
@@ -71,9 +73,9 @@ export default async function PostDetailPage({
 }
 
 // 客户端组件：复制图片到剪贴板
-function CopyImage({ url, alt }: { url: string; alt: string }) {
+function CopyImage({ id, url, alt }: { id: string; url: string; alt: string }) {
   // 标记为 client component
-  return <CopyImageClient url={url} alt={alt} />;
+  return <CopyImageClient id={id} url={url} alt={alt} />;
 }
 
 // 由于服务端组件里不能直接用 onClick，把图片块单独抽 client

@@ -37,6 +37,10 @@ export default function PostEditor({ isNew, platforms, post }: Props) {
   const [images, setImages] = useState(post?.images || []);
   const [uploading, setUploading] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [draftKey] = useState(() => {
+    if (post?.id) return post.id;
+    return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  });
   const [pending, startTransition] = useTransition();
   const [err, setErr] = useState('');
 
@@ -68,6 +72,7 @@ export default function PostEditor({ isNew, platforms, post }: Props) {
         const fd = new FormData();
         fd.append('file', file);
         if (post?.id) fd.append('postId', post.id);
+        else fd.append('draftKey', draftKey);
         const res = await fetch('/api/admin/upload', { method: 'POST', body: fd });
         if (!res.ok) {
           const j = await res.json().catch(() => ({}));
@@ -76,8 +81,11 @@ export default function PostEditor({ isNew, platforms, post }: Props) {
         }
         const data = await res.json();
         setImages((prev) => [...prev, { id: data.id, url: data.url, filename: data.filename }]);
-        // 自动插入到编辑器末尾
-        editor?.chain().focus().setImage({ src: data.url, alt: file.name }).run();
+        editor?.chain().focus('end').insertContent([
+          { type: 'image', attrs: { src: data.url, alt: file.name } },
+          { type: 'paragraph' },
+        ]).run();
+        window.setTimeout(() => editor?.commands.focus('end'), 0);
         uploaded = true;
       }
     } finally {
@@ -115,6 +123,7 @@ export default function PostEditor({ isNew, platforms, post }: Props) {
       pinned,
       order,
       imageIds: images.map((img) => img.id),
+      draftKey,
     };
     const url = isNew ? '/api/admin/posts' : `/api/admin/posts/${post!.id}`;
     const method = isNew ? 'POST' : 'PUT';

@@ -1,6 +1,6 @@
-// /api/seed — 临时初始化路由：创建数据库表、平台数据和第一个管理员账号。
-// 初始化完成并确认可登录后，应删除此文件再重新部署。
-import { NextResponse } from 'next/server';
+// /api/seed — 受 SEED_TOKEN 保护的初始化路由。
+// 生产环境未配置 SEED_TOKEN 时，该路由默认不可用。
+import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { PrismaClient } from '@prisma/client';
 
@@ -114,11 +114,22 @@ const SCHEMA_STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "GlobalIntro_isPublished_idx" ON "GlobalIntro"("isPublished")`,
 ];
 
-export async function GET() {
+function isSeedAuthorized(req: NextRequest) {
+  const seedToken = process.env.SEED_TOKEN;
+  if (!seedToken) return false;
+  const requestToken = req.headers.get('x-seed-token') || req.nextUrl.searchParams.get('token');
+  return requestToken === seedToken;
+}
+
+export async function GET(req: NextRequest) {
   const log: string[] = [];
   const prisma = new PrismaClient();
 
   try {
+    if (!isSeedAuthorized(req)) {
+      return NextResponse.json({ error: 'not_found' }, { status: 404 });
+    }
+
     if (!process.env.DATABASE_URL) {
       return NextResponse.json(
         { ok: false, error: 'Missing DATABASE_URL. Prisma reads DATABASE_URL, not POSTGRES_URL.', log },

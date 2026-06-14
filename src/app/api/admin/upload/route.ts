@@ -2,7 +2,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { uploadToR2, keyFromUrl } from '@/lib/r2';
+import { uploadToR2 } from '@/lib/r2';
+import { getOrCreateDraftPost, isValidDraftKey } from '@/lib/post-images';
 
 const ALLOWED = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 
@@ -15,6 +16,7 @@ export async function POST(req: NextRequest) {
   const fd = await req.formData();
   const file = fd.get('file') as File | null;
   const postId = (fd.get('postId') as string) || null;
+  const draftKey = (fd.get('draftKey') as string) || null;
 
   if (!file) return NextResponse.json({ error: 'no file' }, { status: 400 });
   if (!ALLOWED.has(file.type)) {
@@ -27,16 +29,30 @@ export async function POST(req: NextRequest) {
   const buf = Buffer.from(await file.arrayBuffer());
 
   try {
-    const r = await uploadToR2(buf, file.type, file.name);
+    let targetPostId: string;
+    if (postId) {
+      const post = await prisma.post.findFirst({
+        where: { id: postId, isDeleted: false },
+        select: { id: true },
+      });
+      if (!post) {
+        return NextResponse.json({ error: '文案不存在' }, { status: 400 });
+      }
+      targetPostId = post.id;
+    } else {
+      if (!isValidDraftKey(draftKey)) {
+        return NextResponse.json({ error: '缺少临时草稿标识' }, { status: 400 });
+      }
+      const draft = await getOrCreateDraftPost(prisma, session.user.id, draftKey!);
+      targetPostId = draft.id;
+    }
 
-    // 关联到 PostImage 表
-    const existingCount = postId
-      ? await prisma.postImage.count({ where: { postId } })
-      : 0;
+    const existingCount = await prisma.postImage.count({ where: { postId: targetPostId } });
+    const r = await uploadToR2(buf, file.type, file.name);
 
     const img = await prisma.postImage.create({
       data: {
-        postId: postId || (await getOrCreateOrphanPost()).id,
+        postId: targetPostId,
         url: r.url,
         filename: file.name,
         mimeType: r.mimeType,
@@ -51,30 +67,7 @@ export async function POST(req: NextRequest) {
       filename: img.filename,
     });
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message || 'upload failed' }, { status: 500 });
+    console.error('upload failed', e);
+    return NextResponse.json({ error: '上传失败，请重试' }, { status: 500 });
   }
 }
-
-async function getOrCreateOrphanPost() {
-  // 兜底：上传时若没有 postId，先存到一个 "临时" 平台 / 文案里
-  // 实际使用中编辑器已创建/编辑 post，所以这分支几乎不会触发
-  let platform = await prisma.platform.findFirst({ where: { slug: 'xiaohongshu' } });
-  if (!platform) {
-    platform = await prisma.platform.create({
-      data: { slug: 'xiaohongshu', name: '小红书', emoji: '📕', order: 1 },
-    });
-  }
-  const p = await prisma.post.create({
-    data: {
-      platformId: platform.id,
-      title: '__orphan__',
-      contentHtml: '<p></p>',
-      contentText: '',
-      isDeleted: true,
-    },
-  });
-  return p;
-}
-
-// 没用但保留以避免 lint 警告
-void keyFromUrl;

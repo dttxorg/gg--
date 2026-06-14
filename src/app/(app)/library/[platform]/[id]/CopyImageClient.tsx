@@ -1,22 +1,21 @@
 'use client';
 import { useState } from 'react';
 
-export default function CopyImageClient({ url, alt }: { url: string; alt: string }) {
+export default function CopyImageClient({ id, url, alt }: { id: string; url: string; alt: string }) {
   const [copied, setCopied] = useState(false);
   const [err, setErr] = useState('');
 
   async function handleCopy() {
     setErr('');
     try {
-      // 1) 拉图片转 Blob
-      const res = await fetch(url, { mode: 'cors' });
+      const res = await fetch(`/api/images/${id}`);
       if (!res.ok) throw new Error('fetch failed');
       const blob = await res.blob();
+      const png = await toPngBlob(blob);
 
-      // 2) 优先用 ClipboardItem API（需要 HTTPS / localhost）
       if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
         await navigator.clipboard.write([
-          new ClipboardItem({ [blob.type]: blob }),
+          new ClipboardItem({ 'image/png': png }),
         ]);
         setCopied(true);
         setTimeout(() => setCopied(false), 1800);
@@ -49,4 +48,36 @@ export default function CopyImageClient({ url, alt }: { url: string; alt: string
       </span>
     </div>
   );
+}
+
+function toPngBlob(blob: Blob) {
+  return new Promise<Blob>((resolve, reject) => {
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(blob);
+
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error('图片转换失败'));
+        return;
+      }
+      ctx.drawImage(img, 0, 0);
+      canvas.toBlob((png) => {
+        URL.revokeObjectURL(objectUrl);
+        if (png) resolve(png);
+        else reject(new Error('图片转换失败'));
+      }, 'image/png');
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('图片读取失败'));
+    };
+
+    img.src = objectUrl;
+  });
 }

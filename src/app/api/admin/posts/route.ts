@@ -4,6 +4,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { attachImagesToPost, isValidDraftKey } from '@/lib/post-images';
+import { sanitizeContentHtml } from '@/lib/sanitize';
 import { z } from 'zod';
 
 const PostSchema = z.object({
@@ -12,10 +14,11 @@ const PostSchema = z.object({
   subtitle: z.string().max(500).optional().default(''),
   tags: z.string().max(200).optional().default(''),
   contentHtml: z.string().min(1),
-  contentText: z.string().min(1),
+  contentText: z.string().optional().default(''),
   pinned: z.boolean().optional().default(false),
   order: z.number().int().optional().default(0),
   imageIds: z.array(z.string()).max(80).optional().default([]),
+  draftKey: z.string().optional().nullable(),
 });
 
 async function requireAdmin() {
@@ -34,27 +37,41 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'invalid', detail: parsed.error.flatten() }, { status: 400 });
   }
   const d = parsed.data;
+  const contentHtml = sanitizeContentHtml(d.contentHtml) || '<p></p>';
 
-  const post = await prisma.post.create({
-    data: {
-      platformId: d.platformId,
-      title: d.title,
-      subtitle: d.subtitle || null,
-      tags: d.tags || null,
-      contentHtml: d.contentHtml,
-      contentText: d.contentText,
-      pinned: d.pinned,
-      order: d.order,
-      authorId: session.user.id,
-    },
-  });
-
-  for (const [order, imageId] of d.imageIds.entries()) {
-    await prisma.postImage.update({
-      where: { id: imageId },
-      data: { postId: post.id, order },
-    }).catch(() => {});
+  if (d.imageIds.length > 0 && !isValidDraftKey(d.draftKey)) {
+    return NextResponse.json({ error: 'invalid draft key' }, { status: 400 });
   }
 
-  return NextResponse.json({ id: post.id });
+  try {
+    const post = await prisma.$transaction(async (tx) => {
+      const created = await tx.post.create({
+        data: {
+          platformId: d.platformId,
+          title: d.title,
+          subtitle: d.subtitle || null,
+          tags: d.tags || null,
+          contentHtml,
+          contentText: d.contentText,
+          pinned: d.pinned,
+          order: d.order,
+          authorId: session.user.id,
+        },
+      });
+
+      await attachImagesToPost(tx, {
+        imageIds: d.imageIds,
+        postId: created.id,
+        userId: session.user.id,
+        draftKey: d.draftKey,
+      });
+
+      return created;
+    });
+
+    return NextResponse.json({ id: post.id });
+  } catch (e) {
+    console.error('create post failed', e);
+    return NextResponse.json({ error: '保存失败，请检查图片是否属于当前草稿' }, { status: 400 });
+  }
 }
