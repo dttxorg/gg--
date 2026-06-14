@@ -1,0 +1,104 @@
+// Prisma schema for giffgaff-agent-hub
+// 用户表 + 平台表 + 文案表 + 图片表
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("POSTGRES_URL")
+}
+
+enum UserRole {
+  ADMIN  // 管理员：可登录后台 CRUD
+  AGENT  // 代理：只读 + 复制
+}
+
+model User {
+  id            String    @id @default(cuid())
+  username      String    @unique
+  displayName   String
+  passwordHash  String
+  role          UserRole  @default(AGENT)
+  isActive      Boolean   @default(true)
+  expireAt      DateTime?
+  createdAt     DateTime  @default(now())
+  lastLoginAt   DateTime?
+  createdBy     String?
+  posts         Post[]    @relation("PostAuthor")
+
+  @@index([username])
+}
+
+model Platform {
+  id          String   @id @default(cuid())
+  // 内部 key: xiaohongshu / douyin / bilibili / toutiao / weibo
+  slug        String   @unique
+  // 平台中文名（展示用）
+  name        String
+  // emoji 头像
+  emoji       String
+  // 排序权重，越小越靠前
+  order       Int      @default(0)
+  // 平台简短描述（给代理看）
+  description String?
+  posts       Post[]
+
+  @@index([order])
+}
+
+model Post {
+  id          String    @id @default(cuid())
+  platformId  String
+  platform    Platform  @relation(fields: [platformId], references: [id], onDelete: Cascade)
+  // 标题（代理看到的）
+  title       String
+  // 副标题/场景描述
+  subtitle    String?
+  // 标签：逗号分隔，例 "种草,教程,爆款"
+  tags        String?
+  // 富文本 HTML（Tiptap 输出）
+  contentHtml String
+  // 纯文本备份（用于"复制全文"功能，避免 HTML 标签）
+  contentText String
+  // 排序权重，越小越靠前
+  order       Int       @default(0)
+  // 是否置顶
+  pinned      Boolean   @default(false)
+  // 软删除
+  isDeleted   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  authorId    String?
+  author      User?     @relation("PostAuthor", fields: [authorId], references: [id])
+  images      PostImage[]
+
+  @@index([platformId, isDeleted, order])
+  @@index([updatedAt])
+}
+
+model PostImage {
+  id          String   @id @default(cuid())
+  postId      String
+  post        Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  // R2 公开访问 URL
+  url         String
+  // 原始文件名
+  filename    String
+  // mime type
+  mimeType    String
+  // 文件大小（字节）
+  size        Int
+  // 在文案中插入的位置（顺序）
+  order       Int      @default(0)
+  // 可选：alt 描述
+  alt         String?
+  createdAt   DateTime @default(now())
+
+  @@index([postId, order])
+}
+
+// 平台初始数据 seed
+// 5 个平台 slug 写死，方便后续扩展
+// xiaohongshu / douyin / bilibili / toutiao / weibo
