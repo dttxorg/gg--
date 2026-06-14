@@ -12,6 +12,7 @@ const PostSchema = z.object({
   contentText: z.string().min(1),
   pinned: z.boolean().optional().default(false),
   order: z.number().int().optional().default(0),
+  imageIds: z.array(z.string()).max(80).optional().default([]),
 });
 
 async function requireAdmin() {
@@ -43,6 +44,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       order: d.order,
     },
   });
+
+  for (const [order, imageId] of d.imageIds.entries()) {
+    await prisma.postImage.update({
+      where: { id: imageId },
+      data: { postId: post.id, order },
+    }).catch(() => {});
+  }
+
   return NextResponse.json({ id: post.id });
 }
 

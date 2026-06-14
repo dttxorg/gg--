@@ -6,7 +6,8 @@ import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
 import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
-import { Bold, Italic, List, ListOrdered, Quote, Image as ImageIcon, Link as LinkIcon, Heading1, Heading2 } from 'lucide-react';
+import { Bold, Italic, List, ListOrdered, Quote, Image as ImageIcon, Link as LinkIcon, Heading1, Heading2, Wand2 } from 'lucide-react';
+import CoverTemplateGenerator from './CoverTemplateGenerator';
 
 interface Props {
   isNew: boolean;
@@ -35,6 +36,7 @@ export default function PostEditor({ isNew, platforms, post }: Props) {
   const [order, setOrder] = useState(post?.order ?? 0);
   const [images, setImages] = useState(post?.images || []);
   const [uploading, setUploading] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
   const [pending, startTransition] = useTransition();
   const [err, setErr] = useState('');
 
@@ -52,12 +54,13 @@ export default function PostEditor({ isNew, platforms, post }: Props) {
     },
   });
 
-  async function handleUpload(files: FileList | null) {
-    if (!files || files.length === 0) return;
+  async function uploadFiles(files: File[]) {
+    if (files.length === 0) return false;
     setUploading(true);
     setErr('');
+    let uploaded = false;
     try {
-      for (const file of Array.from(files)) {
+      for (const file of files) {
         if (file.size > 8 * 1024 * 1024) {
           setErr(`图片 ${file.name} 超过 8MB`);
           continue;
@@ -75,10 +78,22 @@ export default function PostEditor({ isNew, platforms, post }: Props) {
         setImages((prev) => [...prev, { id: data.id, url: data.url, filename: data.filename }]);
         // 自动插入到编辑器末尾
         editor?.chain().focus().setImage({ src: data.url, alt: file.name }).run();
+        uploaded = true;
       }
     } finally {
       setUploading(false);
     }
+    return uploaded;
+  }
+
+  async function handleUpload(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    await uploadFiles(Array.from(files));
+  }
+
+  async function handleTemplateCreate(file: File) {
+    const ok = await uploadFiles([file]);
+    if (!ok) throw new Error('上传模板图片失败');
   }
 
   async function handleSave() {
@@ -90,7 +105,17 @@ export default function PostEditor({ isNew, platforms, post }: Props) {
     const contentHtml = editor.getHTML();
     const contentText = editor.getText();
 
-    const body = { platformId, title, subtitle, tags, contentHtml, contentText, pinned, order };
+    const body = {
+      platformId,
+      title,
+      subtitle,
+      tags,
+      contentHtml,
+      contentText,
+      pinned,
+      order,
+      imageIds: images.map((img) => img.id),
+    };
     const url = isNew ? '/api/admin/posts' : `/api/admin/posts/${post!.id}`;
     const method = isNew ? 'POST' : 'PUT';
 
@@ -202,9 +227,32 @@ export default function PostEditor({ isNew, platforms, post }: Props) {
                   disabled={uploading}
                 />
               </label>
+              <button
+                type="button"
+                onClick={() => setShowTemplates((v) => !v)}
+                className={[
+                  'inline-flex items-center gap-1 px-2 py-1 text-xs font-bold rounded transition',
+                  showTemplates ? 'bg-primary text-white' : 'hover:bg-soft text-ink-2',
+                ].join(' ')}
+              >
+                <Wand2 size={16} />
+                <span>模板生成</span>
+              </button>
               {uploading && <span className="text-xs text-muted self-center ml-2">上传中…</span>}
             </div>
             <EditorContent editor={editor} className="p-4 max-h-[60vh] overflow-y-auto" />
+          </div>
+        )}
+
+        {showTemplates && (
+          <div className="mt-4">
+            <CoverTemplateGenerator
+              postTitle={title}
+              postSubtitle={subtitle}
+              postTags={tags}
+              uploading={uploading}
+              onCreate={handleTemplateCreate}
+            />
           </div>
         )}
       </div>

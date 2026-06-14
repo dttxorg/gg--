@@ -1,12 +1,16 @@
 // 文案列表（管理端）
 import { prisma } from '@/lib/prisma';
 import Link from 'next/link';
+import GlobalIntroPanel from '@/components/GlobalIntroPanel';
 
 export const dynamic = 'force-dynamic';
 
 export default async function AdminPostsPage({ searchParams }: { searchParams: Promise<{ platform?: string }> }) {
   const { platform } = await searchParams;
-  const platforms = await prisma.platform.findMany({ orderBy: { order: 'asc' } });
+  const [platforms, intro] = await Promise.all([
+    prisma.platform.findMany({ orderBy: { order: 'asc' } }),
+    prisma.globalIntro.findUnique({ where: { key: 'main' } }),
+  ]);
   const activeSlug = platform || '';
 
   const where: any = { isDeleted: false };
@@ -20,6 +24,8 @@ export default async function AdminPostsPage({ searchParams }: { searchParams: P
 
   return (
     <div>
+      <GlobalIntroPanel intro={intro} admin />
+
       <div className="flex items-center justify-between mb-5">
         <div>
           <p className="text-xs font-black uppercase tracking-wider text-primary">Posts</p>

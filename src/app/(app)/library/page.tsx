@@ -1,17 +1,21 @@
 // 资料库主页：平台 Tab + 文案列表
 import { prisma } from '@/lib/prisma';
 import Link from 'next/link';
+import GlobalIntroPanel from '@/components/GlobalIntroPanel';
 
 export const dynamic = 'force-dynamic';
 
 export default async function LibraryPage({ searchParams }: { searchParams: Promise<{ platform?: string }> }) {
   const { platform: sp } = await searchParams;
-  const platforms = await prisma.platform.findMany({
-    orderBy: { order: 'asc' },
-    include: {
-      _count: { select: { posts: { where: { isDeleted: false } } } },
-    },
-  });
+  const [platforms, intro] = await Promise.all([
+    prisma.platform.findMany({
+      orderBy: { order: 'asc' },
+      include: {
+        _count: { select: { posts: { where: { isDeleted: false } } } },
+      },
+    }),
+    prisma.globalIntro.findUnique({ where: { key: 'main' } }),
+  ]);
 
   const activeSlug = sp || platforms[0]?.slug || '';
   const activePlatform = platforms.find((p) => p.slug === activeSlug) || platforms[0];
@@ -34,6 +38,8 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
         <h1 className="text-2xl font-black mt-1 mb-1">代理资料库</h1>
         <p className="text-sm text-muted">按平台分栏 · 文案可直接复制 · 配图可一键复制到剪贴板</p>
       </div>
+
+      <GlobalIntroPanel intro={intro} />
 
       {/* 平台 Tab */}
       <nav className="grid grid-cols-3 sm:grid-cols-5 gap-2 mb-6">

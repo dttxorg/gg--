@@ -18,6 +18,30 @@ const PLATFORMS = [
   { slug: 'weibo', name: '微博', emoji: '💬', order: 5, description: '话题 + 实时热点' },
 ];
 
+const DEFAULT_INTRO_HTML = `
+<h2>业务说明</h2>
+<p>这里可以放 giffgaff 代理业务的整体介绍、适合人群、办理流程和常用话术。</p>
+<h2>注意事项</h2>
+<ul>
+  <li>账号、订单、物流和售后信息建议统一记录，避免重复沟通。</li>
+  <li>涉及价格、活动、实名和时效的信息，发布前请先确认是否为最新版本。</li>
+</ul>
+<h2>常见问题</h2>
+<p>可以在这里集中整理代理经常会遇到的问题，方便新人先看总说明，再进入各平台文案。</p>
+`.trim();
+
+const DEFAULT_INTRO_TEXT = [
+  '业务说明',
+  '这里可以放 giffgaff 代理业务的整体介绍、适合人群、办理流程和常用话术。',
+  '',
+  '注意事项',
+  '账号、订单、物流和售后信息建议统一记录，避免重复沟通。',
+  '涉及价格、活动、实名和时效的信息，发布前请先确认是否为最新版本。',
+  '',
+  '常见问题',
+  '可以在这里集中整理代理经常会遇到的问题，方便新人先看总说明，再进入各平台文案。',
+].join('\n');
+
 const SCHEMA_STATEMENTS = [
   `DO $$
    BEGIN
@@ -71,11 +95,23 @@ const SCHEMA_STATEMENTS = [
      "alt" TEXT,
      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
    )`,
+  `CREATE TABLE IF NOT EXISTS "GlobalIntro" (
+     "id" TEXT PRIMARY KEY,
+     "key" TEXT NOT NULL UNIQUE DEFAULT 'main',
+     "title" TEXT NOT NULL DEFAULT '总体介绍',
+     "summary" TEXT,
+     "contentHtml" TEXT NOT NULL,
+     "contentText" TEXT NOT NULL,
+     "isPublished" BOOLEAN NOT NULL DEFAULT true,
+     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+   )`,
   `CREATE INDEX IF NOT EXISTS "User_username_idx" ON "User"("username")`,
   `CREATE INDEX IF NOT EXISTS "Platform_order_idx" ON "Platform"("order")`,
   `CREATE INDEX IF NOT EXISTS "Post_platformId_isDeleted_order_idx" ON "Post"("platformId", "isDeleted", "order")`,
   `CREATE INDEX IF NOT EXISTS "Post_updatedAt_idx" ON "Post"("updatedAt")`,
   `CREATE INDEX IF NOT EXISTS "PostImage_postId_order_idx" ON "PostImage"("postId", "order")`,
+  `CREATE INDEX IF NOT EXISTS "GlobalIntro_isPublished_idx" ON "GlobalIntro"("isPublished")`,
 ];
 
 export async function GET() {
@@ -112,21 +148,43 @@ export async function GET() {
 
     log.push('4. Creating admin account...');
     const existing = await prisma.user.findUnique({ where: { username: ADMIN_USERNAME } });
+    const passwordHash = await bcrypt.hash(ADMIN_PASSWORD, 10);
+    await prisma.user.upsert({
+      where: { username: ADMIN_USERNAME },
+      update: {
+        passwordHash,
+        role: 'ADMIN',
+        isActive: true,
+        expireAt: null,
+      },
+      create: {
+        username: ADMIN_USERNAME,
+        displayName: '系统管理员',
+        passwordHash,
+        role: 'ADMIN',
+        isActive: true,
+      },
+    });
     if (!existing) {
-      const passwordHash = await bcrypt.hash(ADMIN_PASSWORD, 10);
-      await prisma.user.create({
-        data: {
-          username: ADMIN_USERNAME,
-          displayName: '系统管理员',
-          passwordHash,
-          role: 'ADMIN',
-          isActive: true,
-        },
-      });
       log.push(`   ✓ Admin created: ${ADMIN_USERNAME}`);
     } else {
-      log.push(`   ℹ Admin already exists: ${ADMIN_USERNAME}`);
+      log.push(`   ✓ Admin synced: ${ADMIN_USERNAME}`);
     }
+
+    log.push('5. Preparing global intro...');
+    await prisma.globalIntro.upsert({
+      where: { key: 'main' },
+      update: {},
+      create: {
+        key: 'main',
+        title: '总体介绍',
+        summary: '业务说明、常见问题和注意事项集中放在这里。',
+        contentHtml: DEFAULT_INTRO_HTML,
+        contentText: DEFAULT_INTRO_TEXT,
+        isPublished: true,
+      },
+    });
+    log.push('   ✓ Global intro ready');
 
     return NextResponse.json({
       ok: true,

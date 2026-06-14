@@ -38,6 +38,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 <Link href="/admin/posts" className="px-3 py-1.5 rounded-full text-ink-2 hover:bg-soft-2 transition">
                   文案
                 </Link>
+                <Link href="/admin/guide" className="px-3 py-1.5 rounded-full text-ink-2 hover:bg-soft-2 transition">
+                  总介绍
+                </Link>
                 <Link href="/admin/users" className="px-3 py-1.5 rounded-full text-ink-2 hover:bg-soft-2 transition">
                   账号
                 </Link>

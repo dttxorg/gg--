@@ -1,0 +1,734 @@
+'use client';
+
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Download, ImagePlus, RefreshCw, Wand2 } from 'lucide-react';
+
+type TemplateId = 'grid-pop' | 'blue-value' | 'yellow-tips' | 'speech-note' | 'sketch-paper' | 'checklist';
+
+interface CoverTemplateGeneratorProps {
+  postTitle: string;
+  postSubtitle: string;
+  postTags: string;
+  uploading: boolean;
+  onCreate: (file: File) => Promise<void>;
+}
+
+interface CoverForm {
+  template: TemplateId;
+  kicker: string;
+  title: string;
+  highlight: string;
+  subtitle: string;
+  points: string;
+  sticker: string;
+  accent: string;
+}
+
+interface TemplateConfig {
+  id: TemplateId;
+  name: string;
+  desc: string;
+  accent: string;
+  bg: string;
+}
+
+const W = 1080;
+const H = 1440;
+const FONT = '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Arial, sans-serif';
+
+const templates: TemplateConfig[] = [
+  { id: 'grid-pop', name: '网格手账', desc: '纸张 + 胶带 + 荧光标记', accent: '#22c55e', bg: '#f2d6f7' },
+  { id: 'blue-value', name: '蓝底高亮', desc: '极简大标题 + 表情贴纸', accent: '#ffe86a', bg: '#d8f7fb' },
+  { id: 'yellow-tips', name: '黄色小 tips', desc: '亮黄底 + 圆角白纸', accent: '#0284c7', bg: '#f8dc00' },
+  { id: 'speech-note', name: '气泡强标题', desc: '手绘气泡 + 重点词', accent: '#38bdf8', bg: '#fff0b8' },
+  { id: 'sketch-paper', name: '手绘纸张', desc: '蓝粉手绘风 + 轻松说明', accent: '#ec4899', bg: '#dff4ff' },
+  { id: 'checklist', name: '清单便签', desc: '流程/注意事项首图', accent: '#fb7185', bg: '#bde8ff' },
+];
+
+const accentOptions = ['#2563eb', '#22c55e', '#f97316', '#ec4899', '#8b5cf6', '#ef4444'];
+
+export default function CoverTemplateGenerator({
+  postTitle,
+  postSubtitle,
+  postTags,
+  uploading,
+  onCreate,
+}: CoverTemplateGeneratorProps) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const initialTitle = postTitle.trim() || '英国电话卡\n办理指南';
+  const initialSubtitle = postSubtitle.trim() || '新手也能快速上手';
+  const initialKicker = postTags.split(',').map((t) => t.trim()).filter(Boolean)[0] || 'GIFFGAFF TIPS';
+  const [form, setForm] = useState<CoverForm>({
+    template: 'grid-pop',
+    kicker: initialKicker,
+    title: initialTitle,
+    highlight: '避坑重点',
+    subtitle: initialSubtitle,
+    points: '到货先激活\n保存登录信息\n售后问题先截图',
+    sticker: '📱',
+    accent: '#2563eb',
+  });
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+
+  const currentTemplate = useMemo(
+    () => templates.find((t) => t.id === form.template) || templates[0],
+    [form.template],
+  );
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    renderCover(canvas, form);
+  }, [form]);
+
+  function update<K extends keyof CoverForm>(key: K, value: CoverForm[K]) {
+    setMessage('');
+    setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function syncFromPost() {
+    setForm((prev) => ({
+      ...prev,
+      title: postTitle.trim() || prev.title,
+      subtitle: postSubtitle.trim() || prev.subtitle,
+      kicker: postTags.split(',').map((t) => t.trim()).filter(Boolean)[0] || prev.kicker,
+    }));
+  }
+
+  async function getGeneratedFile() {
+    const canvas = canvasRef.current;
+    if (!canvas) throw new Error('画布还没准备好');
+    renderCover(canvas, form);
+
+    const blob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob((value) => resolve(value), 'image/png', 0.96);
+    });
+    if (!blob) throw new Error('生成图片失败');
+
+    const safeTitle = form.title.replace(/\s+/g, '-').replace(/[^\u4e00-\u9fa5\w-]/g, '').slice(0, 24) || 'cover';
+    return new File([blob], `xiaohongshu-${safeTitle}.png`, { type: 'image/png' });
+  }
+
+  async function handleInsert() {
+    setBusy(true);
+    setMessage('');
+    try {
+      const file = await getGeneratedFile();
+      await onCreate(file);
+      setMessage('已生成并插入正文');
+    } catch (e: any) {
+      setMessage(e?.message || '生成失败');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDownload() {
+    setBusy(true);
+    setMessage('');
+    try {
+      const file = await getGeneratedFile();
+      const url = URL.createObjectURL(file);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = file.name;
+      a.click();
+      URL.revokeObjectURL(url);
+      setMessage('PNG 已下载');
+    } catch (e: any) {
+      setMessage(e?.message || '下载失败');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="border border-line rounded-[18px] bg-paper-2 p-4 sm:p-5">
+      <div className="flex flex-col lg:flex-row gap-5">
+        <div className="lg:w-[340px] shrink-0 space-y-4">
+          <div>
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <p className="text-xs font-black uppercase tracking-wider text-primary m-0">Cover templates</p>
+              <button
+                type="button"
+                onClick={syncFromPost}
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-full border border-line bg-white hover:border-primary hover:text-primary transition"
+              >
+                <RefreshCw size={13} />
+                同步标题
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {templates.map((template) => {
+                const active = template.id === form.template;
+                return (
+                  <button
+                    key={template.id}
+                    type="button"
+                    onClick={() => update('template', template.id)}
+                    className={[
+                      'text-left rounded-[14px] border p-3 bg-white transition min-h-[86px]',
+                      active ? 'border-primary shadow-sm' : 'border-line hover:border-primary',
+                    ].join(' ')}
+                  >
+                    <span className="flex items-center gap-2">
+                      <span className="w-4 h-4 rounded-full border border-line" style={{ background: template.bg }} />
+                      <span className="text-sm font-black">{template.name}</span>
+                    </span>
+                    <span className="block text-[11px] text-muted mt-1 leading-relaxed">{template.desc}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="grid gap-3">
+            <Field label="小标签">
+              <input
+                value={form.kicker}
+                onChange={(e) => update('kicker', e.target.value)}
+                className="w-full px-3 py-2 border border-line rounded-sm bg-white focus:border-primary outline-none text-sm"
+                placeholder="GIFFGAFF TIPS"
+              />
+            </Field>
+            <Field label="主标题">
+              <textarea
+                value={form.title}
+                onChange={(e) => update('title', e.target.value)}
+                className="w-full px-3 py-2 border border-line rounded-sm bg-white focus:border-primary outline-none text-sm min-h-24"
+                placeholder="每行 4-10 个字更适合首图"
+              />
+            </Field>
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="高亮词">
+                <input
+                  value={form.highlight}
+                  onChange={(e) => update('highlight', e.target.value)}
+                  className="w-full px-3 py-2 border border-line rounded-sm bg-white focus:border-primary outline-none text-sm"
+                  placeholder="避坑重点"
+                />
+              </Field>
+              <Field label="贴纸">
+                <input
+                  value={form.sticker}
+                  onChange={(e) => update('sticker', e.target.value)}
+                  className="w-full px-3 py-2 border border-line rounded-sm bg-white focus:border-primary outline-none text-sm"
+                  placeholder="📱"
+                />
+              </Field>
+            </div>
+            <Field label="副标题">
+              <input
+                value={form.subtitle}
+                onChange={(e) => update('subtitle', e.target.value)}
+                className="w-full px-3 py-2 border border-line rounded-sm bg-white focus:border-primary outline-none text-sm"
+                placeholder="新手也能快速上手"
+              />
+            </Field>
+            <Field label="清单/补充文案">
+              <textarea
+                value={form.points}
+                onChange={(e) => update('points', e.target.value)}
+                className="w-full px-3 py-2 border border-line rounded-sm bg-white focus:border-primary outline-none text-sm min-h-20"
+                placeholder={'一行一个要点'}
+              />
+            </Field>
+            <div>
+              <label className="block text-xs font-bold text-muted mb-1.5">强调色</label>
+              <div className="flex flex-wrap gap-2">
+                {accentOptions.map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    onClick={() => update('accent', color)}
+                    className={[
+                      'w-8 h-8 rounded-full border-2 transition',
+                      form.accent === color ? 'border-ink shadow-sm' : 'border-white hover:border-line',
+                    ].join(' ')}
+                    style={{ background: color }}
+                    aria-label={`选择颜色 ${color}`}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div>
+              <h3 className="text-base font-black m-0">{currentTemplate.name}</h3>
+              <p className="text-xs text-muted m-0 mt-0.5">1080 × 1440 PNG，小红书首图比例</p>
+            </div>
+            <div className="flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={handleDownload}
+                disabled={busy}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-full border border-line bg-white hover:border-primary hover:text-primary transition disabled:opacity-60"
+              >
+                <Download size={14} />
+                下载
+              </button>
+              <button
+                type="button"
+                onClick={handleInsert}
+                disabled={busy || uploading}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-full bg-primary text-white hover:bg-primary-dark transition disabled:opacity-60"
+              >
+                <ImagePlus size={14} />
+                {busy || uploading ? '处理中…' : '生成并插入'}
+              </button>
+            </div>
+          </div>
+
+          <div className="grid place-items-center bg-white border border-line rounded-[18px] p-3 sm:p-4">
+            <canvas
+              ref={canvasRef}
+              width={W}
+              height={H}
+              className="w-full max-w-[380px] aspect-[3/4] rounded-[14px] shadow-sm bg-white"
+            />
+          </div>
+
+          {message && (
+            <p className="text-xs text-muted bg-white border border-line rounded-sm px-3 py-2 mt-3">{message}</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="block">
+      <span className="block text-xs font-bold text-muted mb-1.5">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function renderCover(canvas: HTMLCanvasElement, form: CoverForm) {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  ctx.clearRect(0, 0, W, H);
+  ctx.imageSmoothingEnabled = true;
+  ctx.textBaseline = 'alphabetic';
+
+  if (form.template === 'grid-pop') drawGridPop(ctx, form);
+  if (form.template === 'blue-value') drawBlueValue(ctx, form);
+  if (form.template === 'yellow-tips') drawYellowTips(ctx, form);
+  if (form.template === 'speech-note') drawSpeechNote(ctx, form);
+  if (form.template === 'sketch-paper') drawSketchPaper(ctx, form);
+  if (form.template === 'checklist') drawChecklist(ctx, form);
+}
+
+function drawGridPop(ctx: CanvasRenderingContext2D, form: CoverForm) {
+  fill(ctx, '#f3d7f8');
+  ctx.save();
+  ctx.translate(100, 180);
+  ctx.rotate(-0.035);
+  roundedRect(ctx, 0, 0, 880, 1060, 26, '#fffdf8');
+  drawGrid(ctx, 40, '#e8ddfb', 0, 0, 880, 1060);
+  drawTape(ctx, 14, -44, 170, 58, '#c9b7e8', -0.7);
+  drawTape(ctx, 702, -42, 170, 58, '#c9b7e8', 0.72);
+  drawPaperCurl(ctx, 0, 940);
+  ctx.restore();
+
+  drawKicker(ctx, form.kicker, 150, 245, '#2b2435');
+  drawTitleBlock(ctx, form.title, 540, 540, 760, 112, 74, '#050505', 'center', 5, '900');
+  drawMarker(ctx, 250, 660, 560, 84, '#86efac', -0.035);
+  drawTitleBlock(ctx, form.highlight, 540, 725, 620, 92, 62, '#050505', 'center', 2, '900');
+  drawSquiggle(ctx, 520, 615, 280, form.accent, 14);
+  drawSubtitle(ctx, form.subtitle, 540, 945, 660, '#4338ca');
+  drawEmoji(ctx, form.sticker, 785, 1040, 174);
+}
+
+function drawBlueValue(ctx: CanvasRenderingContext2D, form: CoverForm) {
+  fill(ctx, '#d9f7fb');
+  drawMarker(ctx, 158, 320, 560, 72, '#fff27d', 0);
+  drawTitleBlock(ctx, form.title, 165, 420, 760, 104, 66, '#123f7a', 'left', 5, '900');
+  drawSquiggle(ctx, 610, 735, 250, '#30c7d9', 18);
+  drawEmoji(ctx, form.sticker, 770, 380, 142);
+  drawEmoji(ctx, '✨', 195, 1060, 88);
+  drawMarker(ctx, 210, 1020, 640, 66, '#ffffff', -0.015);
+  drawSubtitle(ctx, form.highlight || form.subtitle, 540, 1065, 660, '#123f7a');
+  drawKicker(ctx, form.kicker, 160, 1280, '#123f7a');
+}
+
+function drawYellowTips(ctx: CanvasRenderingContext2D, form: CoverForm) {
+  fill(ctx, '#f7dc00');
+  roundedRect(ctx, 155, 145, 770, 1110, 330, '#fffef8');
+  drawLinedPaper(ctx, 180, 230, 720, 890, '#ecebe4');
+  drawKicker(ctx, form.kicker, 170, 118, '#27230b');
+  drawTitleBlock(ctx, form.title, 540, 560, 720, 112, 70, '#050505', 'center', 5, '900');
+  drawSquiggle(ctx, 615, 705, 270, form.accent, 18);
+  drawTitleBlock(ctx, form.highlight, 540, 915, 620, 86, 58, '#050505', 'center', 2, '900');
+  drawCornerTriangle(ctx, 905, 1265, '#111111');
+}
+
+function drawSpeechNote(ctx: CanvasRenderingContext2D, form: CoverForm) {
+  fill(ctx, '#fff0b8');
+  drawSpeechBubble(ctx, 145, 205, 790, 970);
+  drawEmoji(ctx, '!!', 790, 250, 96, '#ffffff');
+  drawTitleBlock(ctx, form.title, 540, 540, 700, 94, 58, '#050505', 'center', 4, '900');
+  drawMarker(ctx, 270, 535, 540, 90, '#fff0b8', 0.01);
+  drawTitleBlock(ctx, form.highlight, 540, 630, 620, 86, 56, form.accent, 'center', 2, '900');
+  drawSubtitle(ctx, form.subtitle, 540, 930, 650, '#1f2937');
+  drawEmoji(ctx, form.sticker, 170, 1120, 90);
+  drawDoodleStar(ctx, 170, 1090, '#e9b9ff');
+}
+
+function drawSketchPaper(ctx: CanvasRenderingContext2D, form: CoverForm) {
+  fill(ctx, '#dff4ff');
+  drawLoosePaper(ctx, 150, 225, 780, 980, '#65bdf0');
+  drawKicker(ctx, form.kicker, 165, 245, '#65bdf0');
+  drawTitleBlock(ctx, form.title, 540, 555, 680, 106, 66, '#62b5eb', 'center', 4, '900');
+  drawSquiggle(ctx, 350, 760, 380, '#62b5eb', 16);
+  drawTitleBlock(ctx, form.highlight, 540, 840, 680, 92, 58, form.accent, 'center', 2, '900');
+  drawSubtitle(ctx, form.subtitle, 540, 1045, 600, '#62b5eb');
+  drawEmoji(ctx, form.sticker, 800, 335, 90);
+  drawSimpleLaptop(ctx, 200, 1110, '#9bd4f5');
+}
+
+function drawChecklist(ctx: CanvasRenderingContext2D, form: CoverForm) {
+  fill(ctx, '#bde8ff');
+  roundedRect(ctx, 120, 165, 840, 1100, 42, '#fffdf6');
+  drawLinedPaper(ctx, 160, 245, 760, 910, '#e7e1d1');
+  drawBinding(ctx);
+  drawTape(ctx, 640, 140, 190, 52, '#f5c242', -0.02);
+  drawKicker(ctx, form.kicker, 170, 230, '#1e3a8a');
+  drawTitleBlock(ctx, form.title, 535, 430, 700, 94, 58, '#050505', 'center', 3, '900');
+  drawMarker(ctx, 275, 510, 420, 72, '#fde68a', -0.02);
+  drawTitleBlock(ctx, form.highlight, 540, 575, 560, 72, 48, form.accent, 'center', 2, '900');
+  drawPoints(ctx, form.points, 245, 800, 620, form.accent);
+  drawEmoji(ctx, form.sticker, 800, 1110, 115);
+}
+
+function fill(ctx: CanvasRenderingContext2D, color: string) {
+  ctx.fillStyle = color;
+  ctx.fillRect(0, 0, W, H);
+}
+
+function font(weight: string, size: number) {
+  return `${weight} ${size}px ${FONT}`;
+}
+
+function drawTitleBlock(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  startSize: number,
+  minSize: number,
+  color: string,
+  align: CanvasTextAlign,
+  maxLines: number,
+  weight = '900',
+) {
+  const clean = (text || '').trim() || '填写标题';
+  let size = startSize;
+  let lines = wrapLines(ctx, clean, maxWidth, maxLines);
+  while (size > minSize) {
+    ctx.font = font(weight, size);
+    lines = wrapLines(ctx, clean, maxWidth, maxLines);
+    const tooWide = lines.some((line) => ctx.measureText(line).width > maxWidth);
+    if (!tooWide && lines.length <= maxLines) break;
+    size -= 4;
+  }
+
+  ctx.save();
+  ctx.font = font(weight, size);
+  ctx.fillStyle = color;
+  ctx.textAlign = align;
+  ctx.textBaseline = 'middle';
+  const lineHeight = size * 1.16;
+  lines.forEach((line, i) => {
+    const lineY = y + (i - (lines.length - 1) / 2) * lineHeight;
+    ctx.fillText(line, x, lineY);
+  });
+  ctx.restore();
+}
+
+function wrapLines(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, maxLines: number) {
+  const result: string[] = [];
+  const rawLines = text.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  for (const rawLine of rawLines) {
+    let line = '';
+    for (const char of Array.from(rawLine)) {
+      const test = line + char;
+      if (line && ctx.measureText(test).width > maxWidth) {
+        result.push(line);
+        line = char;
+      } else {
+        line = test;
+      }
+    }
+    if (line) result.push(line);
+  }
+  if (result.length <= maxLines) return result;
+  const clipped = result.slice(0, maxLines);
+  clipped[maxLines - 1] = clipped[maxLines - 1].replace(/[，。,.!?！？、；;：:]?$/, '') + '…';
+  return clipped;
+}
+
+function drawKicker(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, color: string) {
+  ctx.save();
+  ctx.font = font('800', 30);
+  ctx.fillStyle = color;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText((text || 'GIFFGAFF TIPS').toUpperCase(), x, y);
+  ctx.restore();
+}
+
+function drawSubtitle(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, color: string) {
+  if (!text.trim()) return;
+  ctx.save();
+  ctx.font = font('800', 38);
+  ctx.fillStyle = color;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const lines = wrapLines(ctx, text, maxWidth, 2);
+  lines.forEach((line, i) => ctx.fillText(line, x, y + i * 48));
+  ctx.restore();
+}
+
+function roundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number, fillColor: string, strokeColor?: string, lineWidth = 0) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+  ctx.fillStyle = fillColor;
+  ctx.fill();
+  if (strokeColor && lineWidth > 0) {
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = lineWidth;
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawGrid(ctx: CanvasRenderingContext2D, step: number, color: string, x: number, y: number, w: number, h: number) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  for (let cx = x; cx <= x + w; cx += step) {
+    ctx.beginPath();
+    ctx.moveTo(cx, y);
+    ctx.lineTo(cx, y + h);
+    ctx.stroke();
+  }
+  for (let cy = y; cy <= y + h; cy += step) {
+    ctx.beginPath();
+    ctx.moveTo(x, cy);
+    ctx.lineTo(x + w, cy);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawLinedPaper(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, color: string) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  for (let cy = y; cy <= y + h; cy += 58) {
+    ctx.beginPath();
+    ctx.moveTo(x, cy);
+    ctx.lineTo(x + w, cy);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawMarker(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, color: string, rotate: number) {
+  ctx.save();
+  ctx.translate(x + w / 2, y + h / 2);
+  ctx.rotate(rotate);
+  ctx.globalAlpha = 0.9;
+  roundedRect(ctx, -w / 2, -h / 2, w, h, 18, color);
+  ctx.restore();
+}
+
+function drawSquiggle(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, color: string, lineWidth: number) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = lineWidth;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  for (let i = 0; i < width; i += 42) {
+    ctx.quadraticCurveTo(x + i + 20, y + 24, x + i + 42, y);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawTape(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, color: string, rotate: number) {
+  ctx.save();
+  ctx.translate(x + w / 2, y + h / 2);
+  ctx.rotate(rotate);
+  ctx.globalAlpha = 0.62;
+  ctx.fillStyle = color;
+  ctx.fillRect(-w / 2, -h / 2, w, h);
+  ctx.restore();
+}
+
+function drawPaperCurl(ctx: CanvasRenderingContext2D, x: number, y: number) {
+  ctx.save();
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.moveTo(x, y + 80);
+  ctx.quadraticCurveTo(x + 100, y + 20, x + 225, y + 120);
+  ctx.lineTo(x + 52, y + 130);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawEmoji(ctx: CanvasRenderingContext2D, emoji: string, x: number, y: number, size: number, color?: string) {
+  if (!emoji.trim()) return;
+  ctx.save();
+  ctx.font = `900 ${size}px "Apple Color Emoji", "Segoe UI Emoji", ${FONT}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = color || '#111111';
+  ctx.fillText(emoji.slice(0, 6), x, y);
+  ctx.restore();
+}
+
+function drawCornerTriangle(ctx: CanvasRenderingContext2D, x: number, y: number, color: string) {
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x + 36, y);
+  ctx.lineTo(x + 36, y - 36);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawSpeechBubble(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) {
+  ctx.save();
+  ctx.fillStyle = '#fffef8';
+  ctx.strokeStyle = '#050505';
+  ctx.lineWidth = 12;
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(x + 95, y + 20);
+  ctx.lineTo(x + w - 105, y);
+  ctx.lineTo(x + w - 40, y + 205);
+  ctx.lineTo(x + w - 72, y + h - 40);
+  ctx.lineTo(x + w - 230, y + h - 10);
+  ctx.lineTo(x + w - 185, y + h + 110);
+  ctx.lineTo(x + w - 365, y + h - 40);
+  ctx.lineTo(x + 70, y + h - 45);
+  ctx.lineTo(x + 25, y + 520);
+  ctx.lineTo(x + 45, y + 150);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawDoodleStar(ctx: CanvasRenderingContext2D, x: number, y: number, color: string) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 16;
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(x, y - 60);
+  ctx.lineTo(x + 32, y - 14);
+  ctx.lineTo(x + 88, y - 5);
+  ctx.lineTo(x + 48, y + 28);
+  ctx.lineTo(x + 58, y + 84);
+  ctx.lineTo(x, y + 54);
+  ctx.lineTo(x - 54, y + 84);
+  ctx.lineTo(x - 42, y + 28);
+  ctx.lineTo(x - 86, y - 5);
+  ctx.lineTo(x - 30, y - 14);
+  ctx.closePath();
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawLoosePaper(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, color: string) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 10;
+  ctx.fillStyle = '#fffef8';
+  ctx.beginPath();
+  ctx.moveTo(x + 30, y + 40);
+  ctx.quadraticCurveTo(x + 380, y - 35, x + w - 20, y + 45);
+  ctx.lineTo(x + w - 55, y + h - 30);
+  ctx.quadraticCurveTo(x + 365, y + h + 15, x + 12, y + h - 48);
+  ctx.lineTo(x + 5, y + 90);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawSimpleLaptop(ctx: CanvasRenderingContext2D, x: number, y: number, color: string) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 5;
+  ctx.globalAlpha = 0.75;
+  ctx.strokeRect(x, y, 160, 92);
+  ctx.beginPath();
+  ctx.moveTo(x - 30, y + 112);
+  ctx.lineTo(x + 190, y + 112);
+  ctx.lineTo(x + 150, y + 145);
+  ctx.lineTo(x + 5, y + 145);
+  ctx.closePath();
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawBinding(ctx: CanvasRenderingContext2D) {
+  ctx.save();
+  ctx.fillStyle = '#050505';
+  for (let x = 210; x <= 820; x += 150) {
+    roundedRect(ctx, x, 100, 54, 112, 28, '#050505');
+  }
+  ctx.strokeStyle = '#050505';
+  ctx.lineWidth = 8;
+  ctx.beginPath();
+  ctx.moveTo(160, 160);
+  ctx.lineTo(915, 160);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawPoints(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, accent: string) {
+  const points = text.split(/\n+/).map((point) => point.trim()).filter(Boolean).slice(0, 4);
+  ctx.save();
+  ctx.textBaseline = 'top';
+  points.forEach((point, index) => {
+    const cy = y + index * 88;
+    roundedRect(ctx, x - 70, cy - 8, 44, 44, 12, accent);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 7;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x - 58, cy + 12);
+    ctx.lineTo(x - 48, cy + 24);
+    ctx.lineTo(x - 30, cy + 2);
+    ctx.stroke();
+
+    ctx.font = font('800', 42);
+    ctx.fillStyle = '#111111';
+    ctx.textAlign = 'left';
+    const lines = wrapLines(ctx, point, maxWidth, 2);
+    lines.forEach((line, lineIndex) => ctx.fillText(line, x, cy - 8 + lineIndex * 46));
+  });
+  ctx.restore();
+}
