@@ -1,35 +1,7 @@
 // src/lib/r2.ts — Cloudflare R2 上传工具
-// 用 AWS SDK（S3 兼容 API）
-import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
-import { randomUUID } from 'node:crypto';
-
-let _r2: S3Client | null = null;
-let _warned = false;
-
-function getR2(): S3Client {
-  if (_r2) return _r2;
-  if (!_warned) {
-    for (const k of ['R2_ACCOUNT_ID', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET', 'R2_PUBLIC_HOST']) {
-      if (!process.env[k]) {
-        console.warn(`[r2] missing env ${k} — image upload will fail until set`);
-      }
-    }
-    _warned = true;
-  }
-  _r2 = new S3Client({
-    region: 'auto',
-    endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-    credentials: {
-      accessKeyId: process.env.R2_ACCESS_KEY_ID || '',
-      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || '',
-    },
-  });
-  return _r2;
-}
-
-export const R2_BUCKET = process.env.R2_BUCKET || '';
-export const R2_PUBLIC_HOST = process.env.R2_PUBLIC_HOST || '';
-export const r2 = new Proxy({} as S3Client, { get: (_t, prop) => (getR2() as any)[prop] });
+// 注意：此文件被 build 阶段扫描时不能执行任何 Node-only 代码
+// 所有 S3Client 初始化都放在函数内部（运行时才执行）
+// build 时 import 这个文件 = 只导入类型，不创建 client
 
 export interface UploadResult {
   url: string;
@@ -43,11 +15,32 @@ export async function uploadToR2(
   mimeType: string,
   originalName: string
 ): Promise<UploadResult> {
+  // 动态 import：build 时不执行
+  const [{ S3Client, PutObjectCommand }, { randomUUID }] = await Promise.all([
+    import('@aws-sdk/client-s3'),
+    import('node:crypto'),
+  ]);
+
+  if (!process.env.R2_ACCOUNT_ID || !process.env.R2_ACCESS_KEY_ID || !process.env.R2_SECRET_ACCESS_KEY) {
+    throw new Error('R2 凭证未配置');
+  }
+  const bucket = process.env.R2_BUCKET || '';
+  const publicHost = (process.env.R2_PUBLIC_HOST || '').replace(/\/$/, '');
+
+  const s3 = new S3Client({
+    region: 'auto',
+    endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId: process.env.R2_ACCESS_KEY_ID,
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+    },
+  });
+
   const ext = originalName.split('.').pop()?.toLowerCase().slice(0, 8) || 'bin';
   const key = `posts/${new Date().toISOString().slice(0, 10)}/${randomUUID()}.${ext}`;
 
-  await r2.send(new PutObjectCommand({
-    Bucket: R2_BUCKET,
+  await s3.send(new PutObjectCommand({
+    Bucket: bucket,
     Key: key,
     Body: file,
     ContentType: mimeType,
@@ -55,7 +48,7 @@ export async function uploadToR2(
   }));
 
   return {
-    url: `${R2_PUBLIC_HOST.replace(/\/$/, '')}/${key}`,
+    url: `${publicHost}/${key}`,
     key,
     size: file.length,
     mimeType,
@@ -63,12 +56,23 @@ export async function uploadToR2(
 }
 
 export async function deleteFromR2(key: string): Promise<void> {
-  await r2.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: key }));
+  const { S3Client, DeleteObjectCommand } = await import('@aws-sdk/client-s3');
+  if (!process.env.R2_ACCOUNT_ID) return;
+  const s3 = new S3Client({
+    region: 'auto',
+    endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId: process.env.R2_ACCESS_KEY_ID || '',
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || '',
+    },
+  });
+  await s3.send(new DeleteObjectCommand({ Bucket: process.env.R2_BUCKET || '', Key: key }));
 }
 
 export function keyFromUrl(url: string): string | null {
-  if (!R2_PUBLIC_HOST) return null;
-  const prefix = R2_PUBLIC_HOST.replace(/\/$/, '') + '/';
+  const publicHost = (process.env.R2_PUBLIC_HOST || '').replace(/\/$/, '');
+  if (!publicHost) return null;
+  const prefix = publicHost + '/';
   if (!url.startsWith(prefix)) return null;
   return url.slice(prefix.length);
 }
